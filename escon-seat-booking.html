@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>席予約 — STAR LEVEL 外野ライト</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
+
+  :root {
+    --bg: #f5f5f3;
+    --surface: #ffffff;
+    --border: rgba(0,0,0,0.1);
+    --text: #1a1a1a;
+    --text-sub: #666;
+    --text-hint: #aaa;
+    --blue: #2563eb;
+    --blue-light: #dbeafe;
+    --green: #16a34a;
+    --green-light: #dcfce7;
+    --amber: #d97706;
+    --amber-light: #fef3c7;
+    --gray-seat: #e5e5e5;
+    --radius: 8px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Noto Sans JP', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px 16px;
+  }
+
+  .container { max-width: 900px; margin: 0 auto; }
+
+  .header { margin-bottom: 24px; }
+  .header-title { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+  .header-sub { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+
+  .status-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--text-sub);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #22c55e;
+    animation: pulse 2s infinite;
+    flex-shrink: 0;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  .name-area {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 16px;
+  }
+  .name-field label {
+    font-size: 11px; color: var(--text-sub);
+    display: block; margin-bottom: 5px; font-weight: 500;
+  }
+  .name-field input {
+    width: 100%; padding: 8px 12px; font-size: 14px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    font-family: inherit; outline: none; background: var(--bg);
+    transition: border-color 0.15s; color: var(--text);
+  }
+  .name-field input:focus { border-color: var(--blue); background: #fff; }
+  .name-hint { font-size: 11px; color: var(--text-hint); margin-top: 8px; }
+
+  /* EID確認バナー */
+  .eid-banner {
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    margin-top: 10px;
+    font-size: 13px;
+    color: #15803d;
+    display: none;
+    align-items: flex-start;
+    gap: 8px;
+    line-height: 1.6;
+  }
+  .eid-banner.show { display: flex; }
+
+  .map-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 16px;
+    overflow-x: auto;
+  }
+  .map-direction {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-hint);
+    margin-bottom: 12px;
+    padding: 0 2px;
+  }
+  .map-inner { display: flex; gap: 20px; min-width: fit-content; }
+  .sec-block { display: flex; flex-direction: column; }
+  .sec-label {
+    font-size: 11px; font-weight: 700;
+    color: var(--text-sub); margin-bottom: 8px; letter-spacing: 0.3px;
+  }
+  .rows-wrap { display: flex; flex-direction: column; gap: 4px; }
+  .row-line { display: flex; align-items: center; gap: 5px; }
+  .row-tag {
+    font-size: 10px; color: var(--text-hint);
+    min-width: 26px; text-align: right; flex-shrink: 0;
+  }
+  .seats { display: flex; gap: 3px; }
+  .seat {
+    width: 24px; height: 22px;
+    border-radius: 4px; border: none;
+    cursor: pointer; font-size: 9px; font-weight: 600;
+    transition: transform 0.1s, background 0.15s;
+    font-family: inherit;
+  }
+  .seat:active { transform: scale(0.9); }
+  .seat.avail  { background: #dbeafe; color: #1e40af; }
+  .seat.avail:hover { background: #bfdbfe; }
+  .seat.taken  { background: #e5e5e5; color: #999; cursor: not-allowed; }
+  .seat.mine   { background: #dcfce7; color: #15803d; }
+  .seat.mine:hover { background: #bbf7d0; }
+  .seat.selected {
+    background: #fef3c7; color: #92400e;
+    outline: 2px solid #d97706; outline-offset: 1px;
+  }
+  .sec-divider { width: 1px; background: var(--border); margin-top: 20px; }
+
+  .legend {
+    display: flex; gap: 14px; flex-wrap: wrap;
+    margin-top: 12px; padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .leg { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-sub); }
+  .leg-dot { width: 14px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+
+  .action-area {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 24px;
+  }
+  .sel-info {
+    font-size: 12px; color: var(--text-hint);
+    min-height: 36px; margin-bottom: 12px; line-height: 1.7;
+  }
+  .sel-info.has-sel { color: var(--text); }
+  .sel-count { font-size: 11px; color: var(--text-sub); margin-bottom: 4px; }
+  .reserve-btn {
+    width: 100%; padding: 10px;
+    font-size: 14px; font-weight: 700;
+    font-family: inherit; cursor: pointer;
+    background: var(--blue); color: #fff;
+    border: none; border-radius: var(--radius);
+    transition: background 0.15s, opacity 0.15s;
+  }
+  .reserve-btn:hover:not(:disabled) { background: #1d4ed8; }
+  .reserve-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    background: #1a1a1a; color: #fff;
+    padding: 10px 20px; border-radius: 20px;
+    font-size: 13px; opacity: 0;
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none; white-space: nowrap; z-index: 999;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <div class="header-title">STAR LEVEL 外野ライト — 席予約</div>
+    <div class="header-sub">Sec.304〜307 ／ 全180席</div>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">接続中...</span>
+  </div>
+
+  <div class="name-area">
+    <div class="name-field">
+      <label>eidを入力してください</label>
+      <input type="text" id="eid-input" placeholder="" maxlength="30" oninput="onEidInput()" />
+    </div>
+    <div class="name-hint">※ eidを入力してから席を選んでください</div>
+    <div class="eid-banner" id="eid-banner">
+      <span>✅</span>
+      <span id="eid-banner-text"></span>
+    </div>
+  </div>
+
+  <div class="map-wrap">
+    <div class="map-direction">
+      <span>◀ 1塁側（Sec.304）</span>
+      <span>外野側（Sec.307） ▶</span>
+    </div>
+    <div class="map-inner" id="map-inner"></div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:#dbeafe"></div>空席</div>
+      <div class="leg"><div class="leg-dot" style="background:#fef3c7;outline:2px solid #d97706;outline-offset:0"></div>選択中</div>
+      <div class="leg"><div class="leg-dot" style="background:#dcfce7"></div>自分の予約（取消可）</div>
+      <div class="leg"><div class="leg-dot" style="background:#e5e5e5"></div>予約済み</div>
+    </div>
+  </div>
+
+  <div class="action-area">
+    <div class="sel-info" id="sel-info">席をクリックして選択してください（複数選択可）</div>
+    <button class="reserve-btn" id="res-btn" disabled onclick="reserve()">予約を確定する</button>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCrECBmxQN9Pzz721lsXDJ1nth7vxSa6SI",
+  authDomain: "escon-seat-select.firebaseapp.com",
+  databaseURL: "https://escon-seat-select-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "escon-seat-select",
+  storageBucket: "escon-seat-select.firebasestorage.app",
+  messagingSenderId: "425307440152",
+  appId: "1:425307440152:web:e28fa6519c69524980ef6d"
+};
+
+const SEATS_DEF = {
+  '304': { rows: [1,3,5], cols: 12 },
+  '305': { rows: [1,3,5], cols: 12 },
+  '306': { rows: [1,3,5], cols: 12 },
+  '307': { rows: [1,2,3,4,5,6], cols: 12 },
+};
+
+let db = null;
+let remoteState = {};  // { "304-1-3": { eid, ts } }
+let selected = new Set();
+let currentEid = '';
+
+function initFirebase() {
+  try {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+    listenDB();
+  } catch(e) {
+    document.getElementById('status-text').textContent = '接続エラー';
+    document.getElementById('status-dot').style.background = '#ef4444';
+  }
+}
+
+function listenDB() {
+  db.ref('seats').on('value', snap => {
+    remoteState = snap.val() || {};
+    document.getElementById('status-text').textContent = 'リアルタイム同期中';
+    renderMap();
+    // EID入力中なら予約バナーも更新
+    if (currentEid) updateEidBanner(currentEid);
+  }, err => {
+    document.getElementById('status-text').textContent = '接続エラー: ' + err.message;
+    document.getElementById('status-dot').style.background = '#ef4444';
+  });
+}
+
+// EID入力のたびに呼ばれる
+function onEidInput() {
+  const val = document.getElementById('eid-input').value.trim().toLowerCase();
+  currentEid = val;
+  selected.clear();
+  updateEidBanner(val);
+  renderMap();
+  updateSelInfo();
+}
+
+// 自分のEIDに紐づく予約があればバナー表示
+function updateEidBanner(eid) {
+  const myKeys = Object.entries(remoteState)
+    .filter(([, info]) => info && info.eid === eid)
+    .map(([k]) => k)
+    .sort((a, b) => {
+      const [as,ar,ac] = a.split('-'); const [bs,br,bc] = b.split('-');
+      return as.localeCompare(bs) || +ar - +br || +ac - +bc;
+    });
+
+  const banner = document.getElementById('eid-banner');
+  if (eid && myKeys.length > 0) {
+    const labels = myKeys.map(k => {
+      const [s,r,c] = k.split('-');
+      return `Sec.${s} ${r}列${c}番`;
+    });
+    document.getElementById('eid-banner-text').textContent =
+      `予約済み：${labels.join('　')}　— 緑の席をクリックで取消できます`;
+    banner.classList.add('show');
+  } else {
+    banner.classList.remove('show');
+  }
+}
+
+function reserve() {
+  if (!currentEid) { showToast('eidを入力してください'); return; }
+  if (selected.size === 0) return;
+
+  const updates = {};
+  selected.forEach(key => {
+    if (!remoteState[key]) {
+      updates[key] = { eid: currentEid, ts: Date.now() };
+    }
+  });
+
+  if (Object.keys(updates).length === 0) {
+    showToast('選択した席はすでに予約済みです');
+    selected.clear();
+    renderMap(); updateSelInfo();
+    return;
+  }
+
+  db.ref('seats').update(updates).then(() => {
+    selected.clear();
+    updateSelInfo();
+    showToast('予約しました！');
+  }).catch(() => showToast('エラーが発生しました'));
+}
+
+function cancelSeat(key) {
+  const info = remoteState[key];
+  if (!info || info.eid !== currentEid) return;
+  db.ref('seats/' + key).remove().then(() => showToast('取り消しました'));
+}
+
+function renderMap() {
+  const wrap = document.getElementById('map-inner');
+  wrap.innerHTML = '';
+  Object.keys(SEATS_DEF).forEach((sec, idx, arr) => {
+    const { rows, cols } = SEATS_DEF[sec];
+    const block = document.createElement('div');
+    block.className = 'sec-block';
+    const lbl = document.createElement('div');
+    lbl.className = 'sec-label';
+    lbl.textContent = 'Sec.' + sec;
+    block.appendChild(lbl);
+    const rw = document.createElement('div');
+    rw.className = 'rows-wrap';
+    rows.forEach(r => {
+      const line = document.createElement('div');
+      line.className = 'row-line';
+      const tag = document.createElement('div');
+      tag.className = 'row-tag';
+      tag.textContent = r + '列';
+      line.appendChild(tag);
+      const seatsEl = document.createElement('div');
+      seatsEl.className = 'seats';
+      for (let c = 1; c <= cols; c++) {
+        const key = `${sec}-${r}-${c}`;
+        const info = remoteState[key];
+        const btn = document.createElement('button');
+        btn.textContent = c;
+        btn.title = `Sec.${sec} ${r}列 ${c}番`;
+
+        if (info) {
+          if (currentEid && info.eid === currentEid) {
+            // 自分の予約 → 緑・クリックで取消
+            btn.className = 'seat mine';
+            btn.title += '（自分の予約 — クリックで取消）';
+            btn.onclick = (() => { const k = key; return () => cancelSeat(k); })();
+          } else {
+            // 他人の予約 → グレー
+            btn.className = 'seat taken';
+          }
+        } else if (selected.has(key)) {
+          btn.className = 'seat selected';
+          btn.onclick = (() => { const k = key; return () => { selected.delete(k); renderMap(); updateSelInfo(); }; })();
+        } else {
+          btn.className = 'seat avail';
+          btn.onclick = (() => { const k = key; return () => {
+            if (!currentEid) { showToast('先にeidを入力してください'); return; }
+            selected.add(k); renderMap(); updateSelInfo();
+          }; })();
+        }
+        seatsEl.appendChild(btn);
+      }
+      line.appendChild(seatsEl);
+      rw.appendChild(line);
+    });
+    block.appendChild(rw);
+    wrap.appendChild(block);
+    if (idx < arr.length - 1) {
+      const div = document.createElement('div');
+      div.className = 'sec-divider';
+      wrap.appendChild(div);
+    }
+  });
+}
+
+function updateSelInfo() {
+  const box = document.getElementById('sel-info');
+  const btn = document.getElementById('res-btn');
+  if (selected.size === 0) {
+    box.textContent = '席をクリックして選択してください（複数選択可）';
+    box.className = 'sel-info';
+    btn.disabled = true;
+    return;
+  }
+  const sorted = [...selected].sort((a,b) => {
+    const [as,ar,ac] = a.split('-'); const [bs,br,bc] = b.split('-');
+    return as.localeCompare(bs) || +ar - +br || +ac - +bc;
+  });
+  const labels = sorted.map(k => { const [s,r,c] = k.split('-'); return `Sec.${s} ${r}列${c}番`; });
+  box.innerHTML = `<div class="sel-count">選択中 ${selected.size}席</div>${labels.join('　')}`;
+  box.className = 'sel-info has-sel';
+  btn.disabled = false;
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+initFirebase();
+</script>
+</body>
+</html>
