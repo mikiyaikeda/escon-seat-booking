@@ -344,24 +344,40 @@ function reserve() {
   if (!currentEid) { showToast('eidを入力してください'); return; }
   if (selected.size === 0) return;
 
-  const updates = {};
-  selected.forEach(key => {
-    if (!remoteState[key]) {
-      updates[key] = { eid: currentEid, ts: Date.now() };
-    }
-  });
+  const keys = [...selected];
+  const ts = Date.now();
+  const failed = []; // 競合で取れなかった席
 
-  if (Object.keys(updates).length === 0) {
-    showToast('選択した席はすでに予約済みです');
-    selected.clear();
-    renderMap(); updateActionArea();
-    return;
-  }
+  // 各席をトランザクションで1つずつ書き込む（競合を確実に防ぐ）
+  const transactions = keys.map(key =>
+    db.ref('seats/' + key).transaction(current => {
+      if (current !== null) {
+        // すでに誰かに取られていた → 書き込まずabort
+        failed.push(key);
+        return; // undefinedを返すとabort（書き込みなし）
+      }
+      // 空席なら書き込む
+      return { eid: currentEid, ts };
+    })
+  );
 
-  db.ref('seats').update(updates).then(() => {
+  Promise.all(transactions).then(() => {
     selected.clear();
     updateActionArea();
-    showToast('登録しました！');
+
+    if (failed.length === 0) {
+      showToast('登録しました！');
+    } else if (failed.length === keys.length) {
+      // 全席が競合
+      showToast('選択した席はすでに予約済みです');
+    } else {
+      // 一部競合
+      const labels = failed.map(k => {
+        const [s,r,c] = k.split('-');
+        return `Sec.${s} ${r}列${c}番`;
+      });
+      showToast(`一部登録済みの席がありました：${labels.join('、')}`);
+    }
   }).catch(() => showToast('エラーが発生しました'));
 }
 
