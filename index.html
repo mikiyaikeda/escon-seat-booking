@@ -275,6 +275,8 @@ const SEATS_DEF = {
   '305': { rows: [1,3,5], cols: 12 },
   '304': { rows: [1,3,5], cols: 12 },
 };
+// Object.keys()は数値キーを昇順ソートするため表示順を明示指定
+const SEATS_ORDER = ['307', '306', '305', '304'];
 
 let db = null;
 let remoteState = {};
@@ -377,7 +379,7 @@ function deleteSelected() {
 function renderMap() {
   const wrap = document.getElementById('map-inner');
   wrap.innerHTML = '';
-  Object.keys(SEATS_DEF).forEach((sec, idx, arr) => {
+  SEATS_ORDER.forEach((sec, idx, arr) => {
     const { rows, cols } = SEATS_DEF[sec];
     const block = document.createElement('div');
     block.className = 'sec-block';
