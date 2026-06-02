@@ -20,6 +20,8 @@
     --green-light: #dcfce7;
     --amber: #d97706;
     --amber-light: #fef3c7;
+    --red: #dc2626;
+    --red-light: #fee2e2;
     --gray-seat: #e5e5e5;
     --radius: 8px;
   }
@@ -80,7 +82,6 @@
   .name-field input:focus { border-color: var(--blue); background: #fff; }
   .name-hint { font-size: 11px; color: var(--text-hint); margin-top: 8px; }
 
-  /* EID確認バナー */
   .eid-banner {
     background: #f0fdf4;
     border: 1px solid #86efac;
@@ -133,15 +134,14 @@
     font-family: inherit;
   }
   .seat:active { transform: scale(0.9); }
-  .seat.avail  { background: #dbeafe; color: #1e40af; }
+  .seat.avail    { background: #dbeafe; color: #1e40af; }
   .seat.avail:hover { background: #bfdbfe; }
-  .seat.taken  { background: #e5e5e5; color: #999; cursor: not-allowed; }
-  .seat.mine   { background: #dcfce7; color: #15803d; }
+  .seat.taken    { background: #e5e5e5; color: #999; cursor: not-allowed; }
+  .seat.mine     { background: #dcfce7; color: #15803d; }
   .seat.mine:hover { background: #bbf7d0; }
-  .seat.selected {
-    background: #fef3c7; color: #92400e;
-    outline: 2px solid #d97706; outline-offset: 1px;
-  }
+  .seat.selected { background: #fef3c7; color: #92400e; outline: 2px solid #d97706; outline-offset: 1px; }
+  /* 削除選択中 */
+  .seat.to-delete { background: #fee2e2; color: #991b1b; outline: 2px solid #dc2626; outline-offset: 1px; }
   .sec-divider { width: 1px; background: var(--border); margin-top: 20px; }
 
   .legend {
@@ -165,16 +165,31 @@
   }
   .sel-info.has-sel { color: var(--text); }
   .sel-count { font-size: 11px; color: var(--text-sub); margin-bottom: 4px; }
-  .reserve-btn {
-    width: 100%; padding: 10px;
+
+  .btn-row { display: flex; gap: 8px; }
+  .register-btn {
+    flex: 1; padding: 10px;
     font-size: 14px; font-weight: 700;
     font-family: inherit; cursor: pointer;
     background: var(--blue); color: #fff;
     border: none; border-radius: var(--radius);
     transition: background 0.15s, opacity 0.15s;
   }
-  .reserve-btn:hover:not(:disabled) { background: #1d4ed8; }
-  .reserve-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .register-btn:hover:not(:disabled) { background: #1d4ed8; }
+  .register-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .delete-btn {
+    flex: 1; padding: 10px;
+    font-size: 14px; font-weight: 700;
+    font-family: inherit; cursor: pointer;
+    background: var(--red); color: #fff;
+    border: none; border-radius: var(--radius);
+    transition: background 0.15s, opacity 0.15s;
+    display: none;
+  }
+  .delete-btn.show { display: block; }
+  .delete-btn:hover:not(:disabled) { background: #b91c1c; }
+  .delete-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
   .toast {
     position: fixed; bottom: 24px; left: 50%;
@@ -222,14 +237,18 @@
     <div class="legend">
       <div class="leg"><div class="leg-dot" style="background:#dbeafe"></div>空席</div>
       <div class="leg"><div class="leg-dot" style="background:#fef3c7;outline:2px solid #d97706;outline-offset:0"></div>選択中</div>
-      <div class="leg"><div class="leg-dot" style="background:#dcfce7"></div>自分の予約（取消可）</div>
+      <div class="leg"><div class="leg-dot" style="background:#dcfce7"></div>自分の予約</div>
+      <div class="leg"><div class="leg-dot" style="background:#fee2e2;outline:2px solid #dc2626;outline-offset:0"></div>削除選択中</div>
       <div class="leg"><div class="leg-dot" style="background:#e5e5e5"></div>予約済み</div>
     </div>
   </div>
 
   <div class="action-area">
     <div class="sel-info" id="sel-info">席をクリックして選択してください（複数選択可）</div>
-    <button class="reserve-btn" id="res-btn" disabled onclick="reserve()">予約を確定する</button>
+    <div class="btn-row">
+      <button class="register-btn" id="register-btn" disabled onclick="reserve()">登録する</button>
+      <button class="delete-btn" id="delete-btn" onclick="deleteSelected()">削除する</button>
+    </div>
   </div>
 
 </div>
@@ -258,8 +277,9 @@ const SEATS_DEF = {
 };
 
 let db = null;
-let remoteState = {};  // { "304-1-3": { eid, ts } }
-let selected = new Set();
+let remoteState = {};
+let selected = new Set();   // 新規登録用に選択中
+let toDelete = new Set();   // 削除用に選択中
 let currentEid = '';
 
 function initFirebase() {
@@ -278,7 +298,6 @@ function listenDB() {
     remoteState = snap.val() || {};
     document.getElementById('status-text').textContent = 'リアルタイム同期中';
     renderMap();
-    // EID入力中なら予約バナーも更新
     if (currentEid) updateEidBanner(currentEid);
   }, err => {
     document.getElementById('status-text').textContent = '接続エラー: ' + err.message;
@@ -286,17 +305,16 @@ function listenDB() {
   });
 }
 
-// EID入力のたびに呼ばれる
 function onEidInput() {
   const val = document.getElementById('eid-input').value.trim().toLowerCase();
   currentEid = val;
   selected.clear();
+  toDelete.clear();
   updateEidBanner(val);
   renderMap();
-  updateSelInfo();
+  updateActionArea();
 }
 
-// 自分のEIDに紐づく予約があればバナー表示
 function updateEidBanner(eid) {
   const myKeys = Object.entries(remoteState)
     .filter(([, info]) => info && info.eid === eid)
@@ -313,7 +331,7 @@ function updateEidBanner(eid) {
       return `Sec.${s} ${r}列${c}番`;
     });
     document.getElementById('eid-banner-text').textContent =
-      `予約済み：${labels.join('　')}　— 緑の席をクリックで取消できます`;
+      `予約済み：${labels.join('　')}`;
     banner.classList.add('show');
   } else {
     banner.classList.remove('show');
@@ -334,21 +352,26 @@ function reserve() {
   if (Object.keys(updates).length === 0) {
     showToast('選択した席はすでに予約済みです');
     selected.clear();
-    renderMap(); updateSelInfo();
+    renderMap(); updateActionArea();
     return;
   }
 
   db.ref('seats').update(updates).then(() => {
     selected.clear();
-    updateSelInfo();
-    showToast('予約しました！');
+    updateActionArea();
+    showToast('登録しました！');
   }).catch(() => showToast('エラーが発生しました'));
 }
 
-function cancelSeat(key) {
-  const info = remoteState[key];
-  if (!info || info.eid !== currentEid) return;
-  db.ref('seats/' + key).remove().then(() => showToast('取り消しました'));
+function deleteSelected() {
+  if (toDelete.size === 0) return;
+
+  const promises = [...toDelete].map(key => db.ref('seats/' + key).remove());
+  Promise.all(promises).then(() => {
+    toDelete.clear();
+    updateActionArea();
+    showToast('削除しました');
+  }).catch(() => showToast('エラーが発生しました'));
 }
 
 function renderMap() {
@@ -382,22 +405,36 @@ function renderMap() {
 
         if (info) {
           if (currentEid && info.eid === currentEid) {
-            // 自分の予約 → 緑・クリックで取消
-            btn.className = 'seat mine';
-            btn.title += '（自分の予約 — クリックで取消）';
-            btn.onclick = (() => { const k = key; return () => cancelSeat(k); })();
+            if (toDelete.has(key)) {
+              // 削除選択中（赤）
+              btn.className = 'seat to-delete';
+              btn.title += '（削除選択中 — もう一度クリックで解除）';
+              btn.onclick = (() => { const k = key; return () => {
+                toDelete.delete(k);
+                renderMap(); updateActionArea();
+              }; })();
+            } else {
+              // 自分の予約（緑）
+              btn.className = 'seat mine';
+              btn.title += '（クリックで削除選択）';
+              btn.onclick = (() => { const k = key; return () => {
+                toDelete.add(k);
+                renderMap(); updateActionArea();
+              }; })();
+            }
           } else {
-            // 他人の予約 → グレー
             btn.className = 'seat taken';
           }
         } else if (selected.has(key)) {
           btn.className = 'seat selected';
-          btn.onclick = (() => { const k = key; return () => { selected.delete(k); renderMap(); updateSelInfo(); }; })();
+          btn.onclick = (() => { const k = key; return () => {
+            selected.delete(k); renderMap(); updateActionArea();
+          }; })();
         } else {
           btn.className = 'seat avail';
           btn.onclick = (() => { const k = key; return () => {
             if (!currentEid) { showToast('先にeidを入力してください'); return; }
-            selected.add(k); renderMap(); updateSelInfo();
+            selected.add(k); renderMap(); updateActionArea();
           }; })();
         }
         seatsEl.appendChild(btn);
@@ -415,23 +452,42 @@ function renderMap() {
   });
 }
 
-function updateSelInfo() {
+function updateActionArea() {
   const box = document.getElementById('sel-info');
-  const btn = document.getElementById('res-btn');
+  const registerBtn = document.getElementById('register-btn');
+  const deleteBtn = document.getElementById('delete-btn');
+
+  // 削除選択中を優先表示
+  if (toDelete.size > 0) {
+    const sorted = [...toDelete].sort((a,b) => {
+      const [as,ar,ac]=a.split('-'); const [bs,br,bc]=b.split('-');
+      return as.localeCompare(bs)||+ar-+br||+ac-+bc;
+    });
+    const labels = sorted.map(k => { const [s,r,c]=k.split('-'); return `Sec.${s} ${r}列${c}番`; });
+    box.innerHTML = `<div class="sel-count" style="color:#dc2626">削除選択中 ${toDelete.size}席</div>${labels.join('　')}`;
+    box.className = 'sel-info has-sel';
+    registerBtn.disabled = true;
+    deleteBtn.classList.add('show');
+    return;
+  }
+
+  deleteBtn.classList.remove('show');
+
   if (selected.size === 0) {
     box.textContent = '席をクリックして選択してください（複数選択可）';
     box.className = 'sel-info';
-    btn.disabled = true;
+    registerBtn.disabled = true;
     return;
   }
+
   const sorted = [...selected].sort((a,b) => {
-    const [as,ar,ac] = a.split('-'); const [bs,br,bc] = b.split('-');
-    return as.localeCompare(bs) || +ar - +br || +ac - +bc;
+    const [as,ar,ac]=a.split('-'); const [bs,br,bc]=b.split('-');
+    return as.localeCompare(bs)||+ar-+br||+ac-+bc;
   });
-  const labels = sorted.map(k => { const [s,r,c] = k.split('-'); return `Sec.${s} ${r}列${c}番`; });
+  const labels = sorted.map(k => { const [s,r,c]=k.split('-'); return `Sec.${s} ${r}列${c}番`; });
   box.innerHTML = `<div class="sel-count">選択中 ${selected.size}席</div>${labels.join('　')}`;
   box.className = 'sel-info has-sel';
-  btn.disabled = false;
+  registerBtn.disabled = false;
 }
 
 function showToast(msg) {
