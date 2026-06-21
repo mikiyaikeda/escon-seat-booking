@@ -450,10 +450,14 @@ function renderMap() {
           }; })();
         } else {
           btn.className = 'seat avail';
-          btn.onclick = (() => { const k = key; return () => {
-            if (!currentEid) { showToast('先にeidを入力してください'); return; }
-            selected.add(k); renderMap(); updateActionArea();
-          }; })();
+          if (!isExpired) {
+            btn.onclick = (() => { const k = key; return () => {
+              if (!currentEid) { showToast('先にeidを入力してください'); return; }
+              selected.add(k); renderMap(); updateActionArea();
+            }; })();
+          } else {
+            btn.style.cursor = 'not-allowed';
+          }
         }
         seatsEl.appendChild(btn);
       }
@@ -514,6 +518,38 @@ function showToast(msg) {
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2200);
 }
+
+// ============================================================
+// ★ 締め切り日時（日本時間）— 必要に応じて変更してください
+// ============================================================
+const DEADLINE = new Date('2025-06-20T23:59:59+09:00');
+// ============================================================
+
+let isExpired = false;
+
+function checkDeadline() {
+  const now = new Date();
+  if (now >= DEADLINE) {
+    isExpired = true;
+    const eidInput = document.getElementById('eid-input');
+    eidInput.disabled = true;
+    eidInput.placeholder = '締め切り済み';
+    eidInput.style.color = '#aaa';
+    eidInput.style.cursor = 'not-allowed';
+    document.querySelector('.name-hint').textContent = '⚠️ 応募期限（6/20）を過ぎたため、登録・変更はできません。';
+    document.querySelector('.name-hint').style.color = '#dc2626';
+    document.getElementById('register-btn').disabled = true;
+    document.getElementById('delete-btn').disabled = true;
+    selected.clear();
+    toDelete.clear();
+    updateActionArea();
+    renderMap();
+  }
+}
+
+checkDeadline();
+// 1分ごとに再チェック（開いたまま締め切りを迎えた場合も対応）
+setInterval(checkDeadline, 60000);
 
 initFirebase();
 </script>
