@@ -245,10 +245,7 @@
 
   <div class="action-area">
     <div class="sel-info" id="sel-info">席をクリックして選択してください（複数選択可）</div>
-    <div class="btn-row">
-      <button class="register-btn" id="register-btn" disabled onclick="reserve()">登録する</button>
-      <button class="delete-btn" id="delete-btn" onclick="deleteSelected()">削除する</button>
-    </div>
+    <button class="register-btn" id="register-btn" disabled onclick="reserve()">登録する</button>
   </div>
 
 </div>
@@ -311,7 +308,6 @@ function onEidInput() {
   const val = document.getElementById('eid-input').value.trim().toLowerCase();
   currentEid = val;
   selected.clear();
-  toDelete.clear();
   updateEidBanner(val);
   renderMap();
   updateActionArea();
@@ -419,43 +415,29 @@ function renderMap() {
         const info = remoteState[key];
         const btn = document.createElement('button');
         btn.textContent = c;
-        btn.title = `Sec.${sec} ${r}列 ${c}番`;
 
         if (info) {
+          // ホバーでEIDを表示
+          btn.title = `Sec.${sec} ${r}列 ${c}番 — ${info.eid}`;
           if (currentEid && info.eid === currentEid) {
-            if (toDelete.has(key)) {
-              // 削除選択中（赤）
-              btn.className = 'seat to-delete';
-              btn.title += '（削除選択中 — もう一度クリックで解除）';
-              btn.onclick = (() => { const k = key; return () => {
-                toDelete.delete(k);
-                renderMap(); updateActionArea();
-              }; })();
-            } else {
-              // 自分の予約（緑）
-              btn.className = 'seat mine';
-              btn.title += '（クリックで削除選択）';
-              btn.onclick = (() => { const k = key; return () => {
-                toDelete.add(k);
-                renderMap(); updateActionArea();
-              }; })();
-            }
+            // 自分の予約（緑・クリック不可）
+            btn.className = 'seat mine';
+            btn.style.cursor = 'default';
           } else {
+            // 他人の予約（グレー）
             btn.className = 'seat taken';
           }
-        } else if (selected.has(key)) {
-          btn.className = 'seat selected';
-          btn.onclick = (() => { const k = key; return () => {
-            selected.delete(k); renderMap(); updateActionArea();
-          }; })();
         } else {
-          btn.className = 'seat avail';
+          // 空席
+          btn.title = `Sec.${sec} ${r}列 ${c}番 — 空席`;
           if (!isExpired) {
+            btn.className = 'seat avail';
             btn.onclick = (() => { const k = key; return () => {
               if (!currentEid) { showToast('先にeidを入力してください'); return; }
               selected.add(k); renderMap(); updateActionArea();
             }; })();
           } else {
+            btn.className = 'seat avail';
             btn.style.cursor = 'not-allowed';
           }
         }
@@ -477,23 +459,6 @@ function renderMap() {
 function updateActionArea() {
   const box = document.getElementById('sel-info');
   const registerBtn = document.getElementById('register-btn');
-  const deleteBtn = document.getElementById('delete-btn');
-
-  // 削除選択中を優先表示
-  if (toDelete.size > 0) {
-    const sorted = [...toDelete].sort((a,b) => {
-      const [as,ar,ac]=a.split('-'); const [bs,br,bc]=b.split('-');
-      return as.localeCompare(bs)||+ar-+br||+ac-+bc;
-    });
-    const labels = sorted.map(k => { const [s,r,c]=k.split('-'); return `Sec.${s} ${r}列${c}番`; });
-    box.innerHTML = `<div class="sel-count" style="color:#dc2626">削除選択中 ${toDelete.size}席</div>${labels.join('　')}`;
-    box.className = 'sel-info has-sel';
-    registerBtn.disabled = true;
-    deleteBtn.classList.add('show');
-    return;
-  }
-
-  deleteBtn.classList.remove('show');
 
   if (selected.size === 0) {
     box.textContent = '席をクリックして選択してください（複数選択可）';
