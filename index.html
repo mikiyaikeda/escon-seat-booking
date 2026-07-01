@@ -140,7 +140,6 @@
   .seat.mine     { background: #dcfce7; color: #15803d; }
   .seat.mine:hover { background: #bbf7d0; }
   .seat.selected { background: #fef3c7; color: #92400e; outline: 2px solid #d97706; outline-offset: 1px; }
-  /* 削除選択中 */
   .seat.to-delete { background: #fee2e2; color: #991b1b; outline: 2px solid #dc2626; outline-offset: 1px; }
   .sec-divider { width: 1px; background: var(--border); margin-top: 20px; }
 
@@ -202,7 +201,6 @@
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-  /* 全体確認ボタン */
   .overview-btn {
     display: block; width: 100%;
     padding: 9px; margin-bottom: 12px;
@@ -215,7 +213,6 @@
   }
   .overview-btn:hover { background: #f5f5f3; }
 
-  /* モーダル */
   .modal-overlay {
     display: none; position: fixed;
     inset: 0; background: rgba(0,0,0,0.5);
@@ -317,7 +314,7 @@
       <label>eidを入力してください</label>
       <input type="text" id="eid-input" placeholder="" maxlength="30" oninput="onEidInput()" />
     </div>
-    <div class="name-hint">※ eidを入力してから席を選んでください</div>
+    <div class="name-hint" id="name-hint">※ eidを入力してから席を選んでください</div>
     <div class="eid-banner" id="eid-banner">
       <span>✅</span>
       <span id="eid-banner-text"></span>
@@ -391,14 +388,45 @@ const SEATS_DEF = {
   '305': { rows: [1,3,5], cols: 12 },
   '304': { rows: [1,3,5], cols: 12 },
 };
-// Object.keys()は数値キーを昇順ソートするため表示順を明示指定
 const SEATS_ORDER = ['307', '306', '305', '304'];
 
 let db = null;
 let remoteState = {};
-let selected = new Set();   // 新規登録用に選択中
-let toDelete = new Set();   // 削除用に選択中
+let selected = new Set();
+let toDelete = new Set();
 let currentEid = '';
+
+// ============================================================
+// ★ 締め切り日時（日本時間）
+// ============================================================
+const DEADLINE = new Date('2025-07-03T23:59:59+09:00');
+// ============================================================
+
+let isExpired = false;
+
+function checkDeadline() {
+  const now = new Date();
+  if (now >= DEADLINE) {
+    isExpired = true;
+    const eidInput = document.getElementById('eid-input');
+    eidInput.disabled = true;
+    eidInput.placeholder = '締め切り済み';
+    eidInput.style.color = '#aaa';
+    eidInput.style.cursor = 'not-allowed';
+    document.getElementById('name-hint').textContent = '⚠️ 応募期限を過ぎたため、登録・変更はできません。';
+    document.getElementById('name-hint').style.color = '#dc2626';
+    document.getElementById('register-btn').disabled = true;
+    const delBtn = document.getElementById('delete-btn');
+    if (delBtn) delBtn.disabled = true;
+    selected.clear();
+    toDelete.clear();
+    updateActionArea();
+    renderMap();
+  }
+}
+
+checkDeadline();
+setInterval(checkDeadline, 60000);
 
 function initFirebase() {
   try {
@@ -461,17 +489,14 @@ function reserve() {
 
   const keys = [...selected];
   const ts = Date.now();
-  const failed = []; // 競合で取れなかった席
+  const failed = [];
 
-  // 各席をトランザクションで1つずつ書き込む（競合を確実に防ぐ）
   const transactions = keys.map(key =>
     db.ref('seats/' + key).transaction(current => {
       if (current !== null) {
-        // すでに誰かに取られていた → 書き込まずabort
         failed.push(key);
-        return; // undefinedを返すとabort（書き込みなし）
+        return;
       }
-      // 空席なら書き込む
       return { eid: currentEid, ts };
     })
   );
@@ -483,10 +508,8 @@ function reserve() {
     if (failed.length === 0) {
       showToast('登録しました！');
     } else if (failed.length === keys.length) {
-      // 全席が競合
       showToast('選択した席はすでに予約済みです');
     } else {
-      // 一部競合
       const labels = failed.map(k => {
         const [s,r,c] = k.split('-');
         return `Sec.${s} ${r}列${c}番`;
@@ -536,18 +559,14 @@ function renderMap() {
         btn.textContent = c;
 
         if (info) {
-          // ホバーでEIDを表示
           btn.title = `Sec.${sec} ${r}列 ${c}番 — ${info.eid}`;
           if (currentEid && info.eid === currentEid) {
-            // 自分の予約（緑・クリック不可）
             btn.className = 'seat mine';
             btn.style.cursor = 'default';
           } else {
-            // 他人の予約（グレー）
             btn.className = 'seat taken';
           }
         } else {
-          // 空席
           btn.title = `Sec.${sec} ${r}列 ${c}番 — 空席`;
           if (!isExpired) {
             btn.className = 'seat avail';
@@ -612,7 +631,6 @@ function closeOverviewOutside(e) {
 function renderOverview() {
   const wrap = document.getElementById('modal-blocks');
   wrap.innerHTML = '';
-  const totalSeats = Object.keys(remoteState).length;
   const takenSeats = Object.values(remoteState).filter(v => v).length;
   document.getElementById('modal-stat').innerHTML =
     `<strong>${takenSeats}</strong> / 180席 予約済み　空席 <strong>${180 - takenSeats}</strong>席`;
@@ -651,7 +669,6 @@ function renderOverview() {
           } else {
             box.className = 'modal-seat-box taken';
           }
-          // EIDを短縮表示（@より前のみ）
           const shortEid = info.eid.split('@')[0].split('.').map((s,i) => i===0 ? s : s[0]).join('.');
           eidEl.textContent = shortEid;
           eidEl.title = info.eid;
@@ -675,7 +692,6 @@ function renderOverview() {
     }
   });
 
-  // 画面幅に合わせて自動縮小
   requestAnimationFrame(() => {
     const outer = document.getElementById('modal-blocks-outer');
     const inner = document.getElementById('modal-blocks');
@@ -684,7 +700,6 @@ function renderOverview() {
     const scale = innerW > outerW ? outerW / innerW : 1;
     inner.style.transform = `scale(${scale})`;
     inner.style.height = `${inner.scrollHeight * scale}px`;
-    // モーダル全体の高さもビューポートに収める
     const modal = document.getElementById('modal');
     const maxH = window.innerHeight * 0.92;
     if (modal.scrollHeight > maxH) {
@@ -705,39 +720,6 @@ function showToast(msg) {
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2200);
 }
-
-// ============================================================
-// ★ 締め切り日時（日本時間）— 必要に応じて変更してください
-// ============================================================
-const DEADLINE = new Date('2025-06-20T23:59:59+09:00');
-// ============================================================
-
-let isExpired = false;
-
-function checkDeadline() {
-  const now = new Date();
-  if (now >= DEADLINE) {
-    isExpired = true;
-    const eidInput = document.getElementById('eid-input');
-    eidInput.disabled = true;
-    eidInput.placeholder = '締め切り済み';
-    eidInput.style.color = '#aaa';
-    eidInput.style.cursor = 'not-allowed';
-    document.querySelector('.name-hint').textContent = '⚠️ 応募期限（6/20）を過ぎたため、登録・変更はできません。';
-    document.querySelector('.name-hint').style.color = '#dc2626';
-    document.getElementById('register-btn').disabled = true;
-    const delBtn = document.getElementById('delete-btn');
-    if (delBtn) delBtn.disabled = true;
-    selected.clear();
-    toDelete.clear();
-    updateActionArea();
-    renderMap();
-  }
-}
-
-checkDeadline();
-// 1分ごとに再チェック（開いたまま締め切りを迎えた場合も対応）
-setInterval(checkDeadline, 60000);
 
 initFirebase();
 </script>
